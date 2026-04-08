@@ -1,0 +1,10 @@
+/* static/css/home.css */
+.carousel-slide .slick-slide {
+    transition: opacity 0.001s, transform 0.001s;
+  }
+  
+  
+/* ensure we can see even scaled-up slides past the container */
+.carousel-slide .slick-list {
+    overflow: visible !important;
+  }

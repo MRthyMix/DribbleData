@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div class="flex flex-col items-center justify-start p-6 pt-6">
+
+  <!-- Carousel -->
+  <div class="relative w-full max-w-6xl overflow-hidden mb-8">
+    <div class="carousel-slide">
+      {% set players = [
+        {'name': 'LeBron James', 'image': '/static/images/lebron.jpg'},
+        {'name': 'Stephen Curry', 'image': '/static/images/curry.jpg'},
+        {'name': 'Kevin Durant', 'image': '/static/images/durant.jpg'},
+        {'name': 'Anthony Edwards', 'image': '/static/images/edwards.jpg'},
+        {'name': 'Giannis Antetokounmpo', 'image': '/static/images/giannis.jpg'},
+        {'name': 'Victor Wembanyama', 'image': '/static/images/wemby.jpg'},
+        {'name': 'James Harden', 'image': '/static/images/harden.jpg'},
+        {'name': 'Ja Morant', 'image': '/static/images/jamorant.jpg'},
+        {'name': 'Kyrie Irving', 'image': '/static/images/kyrie.jpg'},
+        {'name': 'Devin Booker', 'image': '/static/images/booker.jpg'},
+        {'name': 'Klay Thompson', 'image': '/static/images/klay.jpg'},
+        {'name': 'Paul George', 'image': '/static/images/paul.jpg'}
+      ] %}
+      {% for player in players %}
+      <div class="p-2 relative group cursor-pointer" onclick="handlePlayerClick('{{ player.name }}')">
+        <img src="{{ player.image }}" alt="{{ player.name }}"
+             class="h-80 w-48 object-cover rounded shadow-lg group-hover:opacity-80 transition-transform" />
+        <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black bg-opacity-50 rounded">
+          <span class="text-white text-xl font-bold">{{ player.name }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Buttons -->
+  <div class="flex flex-col md:flex-row gap-6">
+    {% if session.get('user') %}
+      <a href="{{ url_for('search_page') }}"
+         class="px-8 py-3 text-white text-xl rounded"
+         class="px-8 py-3 text-white text-xl rounded shadow-lg"
+         style="background-color: #d57240;"
+         onmouseover="this.style.backgroundColor='#b85423'"
+         onmouseout="this.style.backgroundColor='#d57240'">
+         SEARCH
+      </a>
+
+      <a href="{{ url_for('compare_players') }}"
+         class="px-8 py-3 text-white text-xl rounded"
+         class="px-8 py-3 text-white text-xl rounded shadow-lg"
+         style="background-color: #d57240;"
+         onmouseover="this.style.backgroundColor='#b85423'"
+         onmouseout="this.style.backgroundColor='#d57240'">
+         COMPARE PLAYERS
+      </a>
+
+      <a href="{{ url_for('logout') }}"
+         class="px-8 py-3 text-white text-xl rounded"
+         class="px-8 py-3 text-white text-xl rounded shadow-lg"
+         style="background-color: #ce1d1d;"
+         onmouseover="this.style.backgroundColor='#b91c1c'"
+         onmouseout="this.style.backgroundColor='#dc2626'">
+         LOGOUT
+      </a>
+    {% else %}
+      <a href="{{ url_for('signup') }}"
+         class="px-8 py-3 text-white text-xl rounded"
+         class="px-8 py-3 text-white text-xl rounded shadow-lg"
+         style="background-color: #17a34a;"
+         onmouseover="this.style.backgroundColor='#15803d'"
+         onmouseout="this.style.backgroundColor='#16a34a'">
+         SIGN UP
+      </a>
+
+      <a href="{{ url_for('login') }}"
+         class="px-8 py-3 text-white text-xl rounded"
+         class="px-8 py-3 text-white text-xl rounded shadow-lg"
+         style="background-color: #2563ea;"
+         onmouseover="this.style.backgroundColor='#1d4ed8'"
+         onmouseout="this.style.backgroundColor='#2563eb'">
+         LOGIN
+      </a>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Load Slick Carousel -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick-theme.min.css" />
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.js"></script>
+<script src="{{ url_for('static', filename='js/carouselSlide.js') }}"></script>
+
+
+<script>
+  function handlePlayerClick(playerName) {
+    const userLoggedIn = {{ session.get('user') is not none | tojson }};
+    if (userLoggedIn) {
+      window.location.href = `/player?name=${encodeURIComponent(playerName)}`;
+    } else {
+      alert('You must be logged in to access player stats.');
+      window.location.href = '/login';
+    }
+  }
+</script>
+
+{% endblock %}

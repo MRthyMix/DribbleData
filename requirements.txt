@@ -1,0 +1,12 @@
+flask
+nba_api
+requests
+pandas
+sqlalchemy
+flask_sqlalchemy
+gunicorn
+matplotlib
+pytest
+groq
+python-dotenv
+psycopg2-binary
