@@ -6,7 +6,8 @@
 }
 
 .carousel-slide .slick-slide {
-    transition: opacity 0.001s, transform 0.001s;
+    opacity: 1 !important;
+    transform: scale(1) !important;
   }
   
   
