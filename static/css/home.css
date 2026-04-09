@@ -1,4 +1,10 @@
 /* static/css/home.css */
+
+/* Hide raw slides before Slick initializes to prevent stacked-image flash */
+.carousel-slide:not(.slick-initialized) > div {
+  display: none;
+}
+
 .carousel-slide .slick-slide {
     transition: opacity 0.001s, transform 0.001s;
   }

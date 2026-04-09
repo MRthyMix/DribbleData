@@ -86,10 +86,13 @@
 </div>
 {% endblock %}
 
-{% block scripts %}
-<!-- Load Slick Carousel -->
+{% block head %}
+<!-- Slick Carousel CSS loaded in <head> to prevent unstyled flash -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.css" />
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick-theme.min.css" />
+{% endblock %}
+
+{% block scripts %}
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/slick-carousel/1.8.1/slick.min.js"></script>
 <script src="{{ url_for('static', filename='js/carouselSlide.js') }}"></script>

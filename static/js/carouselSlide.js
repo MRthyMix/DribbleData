@@ -1,5 +1,7 @@
 $(document).ready(function(){
-    $('.carousel-slide').slick({
+    var $slider = $('.carousel-slide');
+
+    $slider.slick({
       slidesToShow: 5,
       slidesToScroll: 1,
       autoplay: true,
@@ -10,13 +12,11 @@ $(document).ready(function(){
       infinite: true,
       pauseOnHover: true,
     });
-  
+
     function styleSlides(slickObj) {
-      const total = slickObj.options.slidesToShow;       
-      const start = slickObj.currentSlide;               // index of the first visible slide
+      const start = slickObj.currentSlide;
       slickObj.$slides.css({ opacity: 0.2, transform: 'scale(1)' });
-  
-      
+
       [1,2,3].forEach(offset => {
         const idx = start + offset;
         $(slickObj.$slides.get(idx)).css({
@@ -25,10 +25,7 @@ $(document).ready(function(){
         });
       });
     }
-  
-    // Run at init, and after every slide transition
-    $slider.on('init afterChange', (e, slick) => styleSlides(slick));
-    // Force an initial style pass
-    $slider.slick('refresh');
+
+    $slider.on('afterChange', (e, slick) => styleSlides(slick));
+    styleSlides($slider.slick('getSlick'));
   });
-  
