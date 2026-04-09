@@ -21,6 +21,15 @@ $(document).ready(function(){
         }
     });
 
+    $slider.on('wheel', function(e) {
+        e.preventDefault();
+        if (e.originalEvent.deltaY < 0 || e.originalEvent.deltaX < 0) {
+            $slider.slick('slickPrev');
+        } else {
+            $slider.slick('slickNext');
+        }
+    });
+
     $slider.slick({
       slidesToShow: 5,
       slidesToScroll: 1,
