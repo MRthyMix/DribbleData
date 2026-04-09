@@ -100,6 +100,7 @@
 
 <script>
   function handlePlayerClick(playerName) {
+    if (window.sliderDragged) return;
     const userLoggedIn = {{ session.get('user') is not none | tojson }};
     if (userLoggedIn) {
       window.location.href = `/player?name=${encodeURIComponent(playerName)}`;
