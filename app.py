@@ -1,7 +1,6 @@
 from flask import Flask, request, session, jsonify, send_from_directory
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import commonplayerinfo, playercareerstats, playergamelog, scoreboardv2, leaguestandings as lg_standings
-from nba_api.library.http import NBAStatsHTTP
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -12,8 +11,8 @@ from groq import Groq
 
 load_dotenv()
 
-# Required headers to avoid being blocked by NBA's CDN on cloud servers
-NBAStatsHTTP.headers = {
+# Headers required to avoid being blocked by NBA's API on cloud servers
+NBA_HEADERS = {
     'Host': 'stats.nba.com',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': 'application/json, text/plain, */*',
@@ -147,13 +146,15 @@ def player_stats():
     player_id = match['id']
     try:
         game_log = playergamelog.PlayerGameLog(
-            player_id=player_id, season_type_all_star='Regular Season'
+            player_id=player_id, season_type_all_star='Regular Season',
+            timeout=8, headers=NBA_HEADERS
         ).get_data_frames()[0]
         last_5 = game_log[['GAME_DATE', 'PTS', 'AST', 'REB', 'STL', 'BLK', 'FG3M']].dropna().head(5)
         recent_games = last_5.to_dict('records')
 
         career_df = playercareerstats.PlayerCareerStats(
-            player_id=player_id, per_mode36='PerGame'
+            player_id=player_id, per_mode36='PerGame',
+            timeout=8, headers=NBA_HEADERS
         ).get_data_frames()[0]
         season_avg = None
         if not career_df.empty:
@@ -168,7 +169,7 @@ def player_stats():
                 'season': row['SEASON_ID'],
             }
 
-        info   = commonplayerinfo.CommonPlayerInfo(player_id=player_id)
+        info   = commonplayerinfo.CommonPlayerInfo(player_id=player_id, timeout=8, headers=NBA_HEADERS)
         bio_df = info.get_data_frames()[0]
         birth_str = bio_df.loc[0, 'BIRTHDATE'][:10]
         computed_age = None
@@ -212,7 +213,8 @@ def compare():
             return None, None
         pid  = match['id']
         logs = playergamelog.PlayerGameLog(
-            player_id=pid, season_type_all_star='Regular Season'
+            player_id=pid, season_type_all_star='Regular Season',
+            timeout=8, headers=NBA_HEADERS
         ).get_data_frames()[0]
         last_5 = logs[['GAME_DATE', 'PTS', 'AST', 'REB']].head(5)
         return match['full_name'], last_5.to_dict('records')
@@ -234,7 +236,7 @@ def compare():
 @app.route('/api/scoreboard')
 def scoreboard():
     try:
-        board    = scoreboardv2.ScoreboardV2(timeout=8)
+        board    = scoreboardv2.ScoreboardV2(timeout=8, headers=NBA_HEADERS)
         games_df = board.get_data_frames()[0]
         lines_df = board.get_data_frames()[1]
         games = []
@@ -270,7 +272,7 @@ def scoreboard():
 @app.route('/api/standings')
 def standings():
     try:
-        df   = lg_standings.LeagueStandings(timeout=8).get_data_frames()[0]
+        df   = lg_standings.LeagueStandings(timeout=8, headers=NBA_HEADERS).get_data_frames()[0]
         cols = ['TeamID', 'TeamCity', 'TeamName', 'WINS', 'LOSSES',
                 'WinPCT', 'HOME', 'ROAD', 'L10', 'strCurrentStreak']
         east = df[df['Conference'] == 'East'][cols].to_dict('records')
