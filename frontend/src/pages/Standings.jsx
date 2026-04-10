@@ -26,21 +26,20 @@ function ConferenceTable({ title, color, teams }) {
                 <td className="px-3 py-3 text-gray-400 text-xs">{i + 1}</td>
                 <td className="px-3 py-3">
                   <div className="flex items-center space-x-2">
-                    <img src={`https://cdn.nba.com/logos/nba/${team.TeamID}/primary/L/logo.svg`}
-                         className="h-6 w-6 object-contain"
+                    <img src={team.logo} className="h-6 w-6 object-contain"
                          onError={e => e.target.style.display = 'none'} />
-                    <span className="font-medium">{team.TeamCity} {team.TeamName}</span>
+                    <span className="font-medium">{team.name}</span>
                   </div>
                 </td>
-                <td className="px-3 py-3 text-center text-green-400 font-semibold">{team.WINS}</td>
-                <td className="px-3 py-3 text-center text-red-400">{team.LOSSES}</td>
-                <td className="px-3 py-3 text-center text-gray-300">{Number(team.WinPCT).toFixed(3)}</td>
-                <td className="px-3 py-3 text-center text-gray-400 hidden sm:table-cell">{team.HOME}</td>
-                <td className="px-3 py-3 text-center text-gray-400 hidden sm:table-cell">{team.ROAD}</td>
-                <td className="px-3 py-3 text-center text-gray-400 hidden md:table-cell">{team.L10}</td>
+                <td className="px-3 py-3 text-center text-green-400 font-semibold">{team.wins}</td>
+                <td className="px-3 py-3 text-center text-red-400">{team.losses}</td>
+                <td className="px-3 py-3 text-center text-gray-300">{Number(team.pct).toFixed(3)}</td>
+                <td className="px-3 py-3 text-center text-gray-400 hidden sm:table-cell">{team.home}</td>
+                <td className="px-3 py-3 text-center text-gray-400 hidden sm:table-cell">{team.road}</td>
+                <td className="px-3 py-3 text-center text-gray-400 hidden md:table-cell">{team.l10}</td>
                 <td className={`px-3 py-3 text-center hidden md:table-cell font-medium
-                  ${team.strCurrentStreak?.startsWith('W') ? 'text-green-400' : 'text-red-400'}`}>
-                  {team.strCurrentStreak}
+                  ${team.streak?.startsWith('W') ? 'text-green-400' : 'text-red-400'}`}>
+                  {team.streak}
                 </td>
               </tr>
             ))}

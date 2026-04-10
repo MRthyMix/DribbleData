@@ -1,6 +1,6 @@
 from flask import Flask, request, session, jsonify, send_from_directory
 from nba_api.stats.static import players
-from nba_api.stats.endpoints import commonplayerinfo, playercareerstats, playergamelog, scoreboardv2, leaguestandings as lg_standings
+from nba_api.stats.endpoints import commonplayerinfo, playercareerstats, playergamelog
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -231,52 +231,78 @@ def compare():
     })
 
 
-# ── Scoreboard ────────────────────────────────────────────────────────────────
+# ── Scoreboard (ESPN) ─────────────────────────────────────────────────────────
 
 @app.route('/api/scoreboard')
 def scoreboard():
     try:
-        board    = scoreboardv2.ScoreboardV2(timeout=8, headers=NBA_HEADERS)
-        games_df = board.get_data_frames()[0]
-        lines_df = board.get_data_frames()[1]
+        resp = requests.get(
+            'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard',
+            timeout=8
+        )
+        events = resp.json().get('events', [])
         games = []
-        for _, game in games_df.iterrows():
-            gid   = game['GAME_ID']
-            teams = lines_df[lines_df['GAME_ID'] == gid]
-            if len(teams) < 2:
-                continue
-            vis  = teams.iloc[0]
-            home = teams.iloc[1]
+        for event in events:
+            comp        = event['competitions'][0]
+            competitors = comp['competitors']
+            home = next(c for c in competitors if c['homeAway'] == 'home')
+            away = next(c for c in competitors if c['homeAway'] == 'away')
 
-            def pts(row):
-                v = row['PTS']
-                return int(v) if v and str(v) != 'nan' else None
+            status      = event['status']
+            status_type = status['type']
+            if status_type['completed']:
+                status_text = 'Final'
+            elif status['period'] > 0:
+                status_text = f"Q{status['period']} {status.get('displayClock', '').strip()}"
+            else:
+                status_text = event.get('status', {}).get('type', {}).get('shortDetail', 'Scheduled')
 
-            games.append({
-                'status':  game['GAME_STATUS_TEXT'].strip(),
-                'visitor': {'name': f"{vis['TEAM_CITY_NAME']} {vis['TEAM_ABBREVIATION']}",
-                            'pts': pts(vis), 'record': vis['TEAM_WINS_LOSSES'],
-                            'team_id': int(game['VISITOR_TEAM_ID'])},
-                'home':    {'name': f"{home['TEAM_CITY_NAME']} {home['TEAM_ABBREVIATION']}",
-                            'pts': pts(home), 'record': home['TEAM_WINS_LOSSES'],
-                            'team_id': int(game['HOME_TEAM_ID'])},
-            })
+            def team_data(c):
+                score = c.get('score')
+                return {
+                    'name':   c['team']['displayName'],
+                    'pts':    int(score) if score and score != '0' or status_type['completed'] else None,
+                    'record': c['records'][0]['summary'] if c.get('records') else '',
+                    'logo':   c['team'].get('logo', ''),
+                }
+
+            games.append({'status': status_text, 'visitor': team_data(away), 'home': team_data(home)})
         return jsonify({'games': games})
     except Exception as e:
         print(f"Scoreboard error: {e}")
         return jsonify({'games': [], 'error': str(e)})
 
 
-# ── Standings ─────────────────────────────────────────────────────────────────
+# ── Standings (ESPN) ──────────────────────────────────────────────────────────
 
 @app.route('/api/standings')
 def standings():
     try:
-        df   = lg_standings.LeagueStandings(timeout=8, headers=NBA_HEADERS).get_data_frames()[0]
-        cols = ['TeamID', 'TeamCity', 'TeamName', 'WINS', 'LOSSES',
-                'WinPCT', 'HOME', 'ROAD', 'L10', 'strCurrentStreak']
-        east = df[df['Conference'] == 'East'][cols].to_dict('records')
-        west = df[df['Conference'] == 'West'][cols].to_dict('records')
+        resp = requests.get(
+            'https://site.api.espn.com/apis/v2/sports/basketball/nba/standings',
+            timeout=8
+        )
+        east, west = [], []
+        for conf in resp.json().get('children', []):
+            teams = []
+            for entry in conf.get('standings', {}).get('entries', []):
+                team  = entry['team']
+                stats = {s['name']: s['value'] for s in entry.get('stats', [])}
+                teams.append({
+                    'name':   team['displayName'],
+                    'logo':   team['logos'][0]['href'] if team.get('logos') else '',
+                    'wins':   int(stats.get('wins', 0)),
+                    'losses': int(stats.get('losses', 0)),
+                    'pct':    round(float(stats.get('winPercent', 0)), 3),
+                    'home':   stats.get('homeRecordSummary', ''),
+                    'road':   stats.get('roadRecordSummary', ''),
+                    'l10':    stats.get('Last Ten Games', stats.get('last10RecordSummary', '')),
+                    'streak': stats.get('streakSummary', stats.get('streak', '')),
+                })
+            if 'East' in conf.get('name', ''):
+                east = teams
+            else:
+                west = teams
         return jsonify({'east': east, 'west': west})
     except Exception as e:
         print(f"Standings error: {e}")

@@ -15,7 +15,7 @@ function TeamRow({ team }) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center space-x-3">
-        <img src={`https://cdn.nba.com/logos/nba/${team.team_id}/primary/L/logo.svg`}
+        <img src={team.logo}
              alt={team.name} className="h-10 w-10 object-contain"
              onError={e => e.target.style.display = 'none'} />
         <div>
