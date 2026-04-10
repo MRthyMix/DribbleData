@@ -71,9 +71,9 @@ def signup():
                 db.session.commit()
                 flash("Account created successfully! You can now log in.", "success")
                 return redirect(url_for("login"))
-        except Exception as e:
+        except Exception:
             db.session.rollback()
-            flash(f"Database error: {e}", "danger")
+            flash("Something went wrong. Please try again.", "danger")
 
     return render_template("signup.html")
 
@@ -91,8 +91,8 @@ def login():
                 return redirect(url_for("home_page"))
             else:
                 flash("Invalid credentials", "danger")
-        except Exception as e:
-            flash(f"Database error: {e}", "danger")
+        except Exception:
+            flash("Something went wrong. Please try again.", "danger")
 
     return render_template("login.html")
 
