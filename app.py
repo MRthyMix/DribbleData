@@ -1,6 +1,7 @@
 from flask import Flask, request, session, jsonify, send_from_directory
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import commonplayerinfo, playercareerstats, playergamelog, scoreboardv2, leaguestandings as lg_standings
+from nba_api.library.http import NBAStatsHTTP
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -10,6 +11,20 @@ import os
 from groq import Groq
 
 load_dotenv()
+
+# Required headers to avoid being blocked by NBA's CDN on cloud servers
+NBAStatsHTTP.headers = {
+    'Host': 'stats.nba.com',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'x-nba-stats-origin': 'stats',
+    'x-nba-stats-token': 'true',
+    'Connection': 'keep-alive',
+    'Referer': 'https://www.nba.com/',
+    'Origin': 'https://www.nba.com',
+}
 
 app = Flask(__name__)
 
@@ -219,7 +234,7 @@ def compare():
 @app.route('/api/scoreboard')
 def scoreboard():
     try:
-        board    = scoreboardv2.ScoreboardV2()
+        board    = scoreboardv2.ScoreboardV2(timeout=8)
         games_df = board.get_data_frames()[0]
         lines_df = board.get_data_frames()[1]
         games = []
@@ -245,8 +260,9 @@ def scoreboard():
                             'team_id': int(game['HOME_TEAM_ID'])},
             })
         return jsonify({'games': games})
-    except Exception:
-        return jsonify({'games': []})
+    except Exception as e:
+        print(f"Scoreboard error: {e}")
+        return jsonify({'games': [], 'error': str(e)})
 
 
 # ── Standings ─────────────────────────────────────────────────────────────────
@@ -254,14 +270,15 @@ def scoreboard():
 @app.route('/api/standings')
 def standings():
     try:
-        df   = lg_standings.LeagueStandings().get_data_frames()[0]
+        df   = lg_standings.LeagueStandings(timeout=8).get_data_frames()[0]
         cols = ['TeamID', 'TeamCity', 'TeamName', 'WINS', 'LOSSES',
                 'WinPCT', 'HOME', 'ROAD', 'L10', 'strCurrentStreak']
         east = df[df['Conference'] == 'East'][cols].to_dict('records')
         west = df[df['Conference'] == 'West'][cols].to_dict('records')
         return jsonify({'east': east, 'west': west})
-    except Exception:
-        return jsonify({'east': [], 'west': []})
+    except Exception as e:
+        print(f"Standings error: {e}")
+        return jsonify({'east': [], 'west': [], 'error': str(e)})
 
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
