@@ -1,5 +1,4 @@
 {
-  "buildCommand": "cd frontend && npm install && npm run build",
   "builds": [
     { "src": "app.py", "use": "@vercel/python" }
   ],
