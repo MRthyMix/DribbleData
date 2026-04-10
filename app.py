@@ -12,8 +12,7 @@ from groq import Groq
 load_dotenv()
 
 app = Flask(__name__)
-database_url = os.getenv("DATABASE_URL", "sqlite:///users.db")
-# Neon/Heroku provide 'postgres://' but SQLAlchemy requires 'postgresql://'
+database_url = os.getenv("DATABASE_URL")
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
@@ -27,7 +26,12 @@ ALL_PLAYERS = players.get_players()
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password = db.Column(db.String(128), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password = db.Column(db.String(256), nullable=False)
+    display_name = db.Column(db.String(80), nullable=True)
+    favorite_team = db.Column(db.String(60), nullable=True)
+    coins = db.Column(db.Integer, default=1000, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 with app.app_context():
     db.create_all()
@@ -51,14 +55,25 @@ def signup():
         username = request.form.get("username")
         password = request.form.get("password")
 
-        if User.query.filter_by(username=username).first():
-            flash("Username already exists", "danger")
-        else:
-            new_user = User(username=username, password=generate_password_hash(password))
-            db.session.add(new_user)
-            db.session.commit()
-            flash("Account created successfully! You can now log in.", "success")
-            return redirect(url_for("login"))
+        email = request.form.get("email")
+        try:
+            if User.query.filter_by(username=username).first():
+                flash("Username already taken.", "danger")
+            elif User.query.filter_by(email=email).first():
+                flash("An account with that email already exists.", "danger")
+            else:
+                new_user = User(
+                    username=username,
+                    email=email,
+                    password=generate_password_hash(password)
+                )
+                db.session.add(new_user)
+                db.session.commit()
+                flash("Account created successfully! You can now log in.", "success")
+                return redirect(url_for("login"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Database error: {e}", "danger")
 
     return render_template("signup.html")
 
@@ -68,13 +83,16 @@ def login():
         username = request.form.get("username")
         password = request.form.get("password")
 
-        user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password, password):
-            session["user"] = username
-            flash("Logged in successfully!", "success")
-            return redirect(url_for("home_page"))
-        else:
-            flash("Invalid credentials", "danger")
+        try:
+            user = User.query.filter_by(username=username).first()
+            if user and check_password_hash(user.password, password):
+                session["user"] = username
+                flash("Logged in successfully!", "success")
+                return redirect(url_for("home_page"))
+            else:
+                flash("Invalid credentials", "danger")
+        except Exception as e:
+            flash(f"Database error: {e}", "danger")
 
     return render_template("login.html")
 
