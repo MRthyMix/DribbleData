@@ -7,7 +7,11 @@ from flask_sqlalchemy import SQLAlchemy
 from functools import wraps
 from dotenv import load_dotenv
 import os
+import traceback
+import logging
 from groq import Groq
+
+logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 
@@ -144,18 +148,23 @@ def player_stats():
         return jsonify({'error': f"No player found matching '{player_name}'"}), 404
 
     player_id = match['id']
+    logging.info(f"[player] found match: {match['full_name']} id={player_id}")
     try:
+        logging.info("[player] fetching game log...")
         game_log = playergamelog.PlayerGameLog(
             player_id=player_id, season_type_all_star='Regular Season',
             timeout=8, headers=NBA_HEADERS
         ).get_data_frames()[0]
+        logging.info(f"[player] game log rows: {len(game_log)}")
         last_5 = game_log[['GAME_DATE', 'PTS', 'AST', 'REB', 'STL', 'BLK', 'FG3M']].dropna().head(5)
         recent_games = last_5.to_dict('records')
 
+        logging.info("[player] fetching career stats...")
         career_df = playercareerstats.PlayerCareerStats(
             player_id=player_id, per_mode36='PerGame',
             timeout=8, headers=NBA_HEADERS
         ).get_data_frames()[0]
+        logging.info(f"[player] career df rows: {len(career_df)}")
         season_avg = None
         if not career_df.empty:
             row = career_df.iloc[-1]
@@ -169,8 +178,10 @@ def player_stats():
                 'season': row['SEASON_ID'],
             }
 
+        logging.info("[player] fetching player info...")
         info   = commonplayerinfo.CommonPlayerInfo(player_id=player_id, timeout=8, headers=NBA_HEADERS)
         bio_df = info.get_data_frames()[0]
+        logging.info("[player] bio fetched ok")
         birth_str = bio_df.loc[0, 'BIRTHDATE'][:10]
         computed_age = None
         try:
@@ -196,8 +207,10 @@ def player_stats():
             'season_avg':   season_avg,
             'recent_games': recent_games,
         })
-    except Exception:
-        return jsonify({'error': 'Failed to load player data.'}), 500
+    except Exception as e:
+        logging.error(f"[player] FAILED: {e}")
+        logging.error(traceback.format_exc())
+        return jsonify({'error': 'Failed to load player data.', 'detail': str(e)}), 500
 
 
 @app.route('/api/compare')
