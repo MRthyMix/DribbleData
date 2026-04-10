@@ -1,10 +1,9 @@
-from flask import Flask, request, session, jsonify
+from flask import Flask, request, session, jsonify, send_from_directory
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import commonplayerinfo, playercareerstats, playergamelog, scoreboardv2, leaguestandings as lg_standings
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
 from functools import wraps
 from dotenv import load_dotenv
 import os
@@ -21,15 +20,8 @@ if database_url.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = os.getenv("SECRET_KEY")
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = True
-
-CORS(app,
-     supports_credentials=True,
-     origins=[
-         'http://localhost:5173',
-         os.getenv('FRONTEND_URL', ''),
-     ])
 
 db = SQLAlchemy(app)
 ALL_PLAYERS = players.get_players()
@@ -291,6 +283,17 @@ def chat():
         return jsonify({'response': response.choices[0].message.content.strip()})
     except Exception:
         return jsonify({'error': 'Something went wrong with the assistant.'}), 500
+
+
+# ── Serve React ───────────────────────────────────────────────────────────────
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react(path):
+    dist = os.path.join(app.root_path, 'static', 'dist')
+    if path and os.path.exists(os.path.join(dist, path)):
+        return send_from_directory(dist, path)
+    return send_from_directory(dist, 'index.html')
 
 
 if __name__ == '__main__':
