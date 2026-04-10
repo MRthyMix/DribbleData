@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Scoreboard{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 pb-12">
+
+  <h1 class="text-3xl font-bold mb-6">Today's Games</h1>
+
+  {% if not games %}
+    <div class="bg-gray-800 rounded-lg p-10 text-center text-gray-400">
+      No games scheduled today. Check back on a game day.
+    </div>
+  {% else %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {% for game in games %}
+      <div class="bg-gray-800 rounded-lg p-5 flex flex-col space-y-4">
+
+        <!-- Status badge -->
+        <div class="flex justify-end">
+          {% if 'Final' in game.status %}
+            <span class="text-xs font-semibold bg-gray-700 text-gray-300 px-2 py-1 rounded">Final</span>
+          {% elif 'Halftime' in game.status %}
+            <span class="text-xs font-semibold bg-yellow-600 text-white px-2 py-1 rounded">Halftime</span>
+          {% elif 'Q' in game.status or 'OT' in game.status %}
+            <span class="text-xs font-semibold bg-green-600 text-white px-2 py-1 rounded animate-pulse">
+              LIVE &bull; {{ game.status }}
+            </span>
+          {% else %}
+            <span class="text-xs font-semibold bg-blue-700 text-white px-2 py-1 rounded">{{ game.status }}</span>
+          {% endif %}
+        </div>
+
+        <!-- Visitor row -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <img src="https://cdn.nba.com/logos/nba/{{ game.visitor_team_id }}/primary/L/logo.svg"
+                 alt="{{ game.visitor_name }}"
+                 class="h-10 w-10 object-contain"
+                 onerror="this.style.display='none'" />
+            <div>
+              <p class="font-semibold text-white">{{ game.visitor_name }}</p>
+              <p class="text-xs text-gray-400">{{ game.visitor_record }}</p>
+            </div>
+          </div>
+          <span class="text-2xl font-bold {{ 'text-white' if game.visitor_pts is not none else 'text-gray-500' }}">
+            {{ game.visitor_pts if game.visitor_pts is not none else '—' }}
+          </span>
+        </div>
+
+        <div class="border-t border-gray-700"></div>
+
+        <!-- Home row -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <img src="https://cdn.nba.com/logos/nba/{{ game.home_team_id }}/primary/L/logo.svg"
+                 alt="{{ game.home_name }}"
+                 class="h-10 w-10 object-contain"
+                 onerror="this.style.display='none'" />
+            <div>
+              <p class="font-semibold text-white">{{ game.home_name }}</p>
+              <p class="text-xs text-gray-400">{{ game.home_record }}</p>
+            </div>
+          </div>
+          <span class="text-2xl font-bold {{ 'text-white' if game.home_pts is not none else 'text-gray-500' }}">
+            {{ game.home_pts if game.home_pts is not none else '—' }}
+          </span>
+        </div>
+
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

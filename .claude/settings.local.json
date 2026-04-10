@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:props.cash)",
+      "WebFetch(domain:outlier.bet)",
+      "WebFetch(domain:oddsjam.com)"
+    ]
+  }
+}

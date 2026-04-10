@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from nba_api.stats.static import players
-from nba_api.stats.endpoints import commonplayerinfo, playercareerstats, playergamelog
+from nba_api.stats.endpoints import commonplayerinfo, playercareerstats, playergamelog, scoreboardv2, leaguestandings as lg_standings
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -32,6 +32,8 @@ class User(db.Model):
     favorite_team = db.Column(db.String(60), nullable=True)
     coins = db.Column(db.Integer, default=1000, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+app.jinja_env.globals['enumerate'] = enumerate
 
 with app.app_context():
     db.create_all()
@@ -147,14 +149,13 @@ def player_stats():
                             error=f"No NBA player found matching '{player_name}'")
     player_id = match["id"]
 
-    # Fetch the last 5 games
+    # Fetch the last 5 regular season games
     game_log = playergamelog.PlayerGameLog(
-    player_id=player_id,
-    season_type_all_star='Playoffs'
+        player_id=player_id,
+        season_type_all_star='Regular Season'
     ).get_data_frames()[0]
     last_5_games = game_log[['GAME_DATE', 'PTS', 'AST', 'REB', 'STL', 'BLK', 'FG3M']].dropna().head(5)
 
-    # Process the stats
     labels = last_5_games['GAME_DATE'].tolist()
     points_per_game = last_5_games['PTS'].tolist()
     assists_per_game = last_5_games['AST'].tolist()
@@ -162,6 +163,23 @@ def player_stats():
     steals_per_game = last_5_games['STL'].tolist()
     blocks_per_game = last_5_games['BLK'].tolist()
     three_pointers_made = last_5_games['FG3M'].tolist()
+
+    # Season averages
+    career_df = playercareerstats.PlayerCareerStats(
+        player_id=player_id, per_mode36='PerGame'
+    ).get_data_frames()[0]
+    season_avg = None
+    if not career_df.empty:
+        row = career_df.iloc[-1]
+        season_avg = {
+            'pts': round(row['PTS'], 1),
+            'reb': round(row['REB'], 1),
+            'ast': round(row['AST'], 1),
+            'stl': round(row['STL'], 1),
+            'blk': round(row['BLK'], 1),
+            'fg3m': round(row['FG3M'], 1),
+            'season': row['SEASON_ID'],
+        }
 
 
     # Get player bio
@@ -183,19 +201,20 @@ def player_stats():
                     if team_id else "/static/images/fallback-team.png"
 
     return render_template(
-    "index.html",
-    error=None,
-    player_data=bio_df.iloc[0].tolist(),
-    computed_age=computed_age,
-    team_logo_url=team_logo_url,
-    chart_labels=labels,
-    chart_points=points_per_game,
-    chart_rebounds=rebounds_per_game,
-    chart_assists=assists_per_game,
-    chart_steals=steals_per_game,
-    chart_blocks=blocks_per_game,
-    chart_3pt=three_pointers_made,
-)
+        "index.html",
+        error=None,
+        player_data=bio_df.iloc[0].tolist(),
+        computed_age=computed_age,
+        team_logo_url=team_logo_url,
+        season_avg=season_avg,
+        chart_labels=labels,
+        chart_points=points_per_game,
+        chart_rebounds=rebounds_per_game,
+        chart_assists=assists_per_game,
+        chart_steals=steals_per_game,
+        chart_blocks=blocks_per_game,
+        chart_3pt=three_pointers_made,
+    )
 
 @app.route('/compare', methods=['GET', 'POST'])
 @login_required
@@ -224,7 +243,7 @@ def compare_results():
         if not match:
             return None, None
         pid = match['id']
-        game_log = playergamelog.PlayerGameLog(player_id=pid, season_type_all_star="Playoffs").get_data_frames()[0]
+        game_log = playergamelog.PlayerGameLog(player_id=pid, season_type_all_star="Regular Season").get_data_frames()[0]
         last_5 = game_log[['GAME_DATE', 'PTS', 'AST', 'REB']].head(5)
         return match['full_name'], last_5
 
@@ -269,6 +288,52 @@ def chatbot():
 @login_required
 def chat_page():
     return render_template("chat.html")
+
+@app.route('/scoreboard')
+def scoreboard():
+    try:
+        board = scoreboardv2.ScoreboardV2()
+        games_df = board.get_data_frames()[0]   # GameHeader
+        lines_df = board.get_data_frames()[1]   # LineScore
+
+        games = []
+        for _, game in games_df.iterrows():
+            game_id = game['GAME_ID']
+            teams = lines_df[lines_df['GAME_ID'] == game_id]
+            if len(teams) < 2:
+                continue
+            visitor = teams.iloc[0]
+            home = teams.iloc[1]
+            games.append({
+                'status': game['GAME_STATUS_TEXT'].strip(),
+                'visitor_name': f"{visitor['TEAM_CITY_NAME']} {visitor['TEAM_ABBREVIATION']}",
+                'visitor_pts': int(visitor['PTS']) if visitor['PTS'] and str(visitor['PTS']) != 'nan' else None,
+                'visitor_record': visitor['TEAM_WINS_LOSSES'],
+                'visitor_team_id': int(game['VISITOR_TEAM_ID']),
+                'home_name': f"{home['TEAM_CITY_NAME']} {home['TEAM_ABBREVIATION']}",
+                'home_pts': int(home['PTS']) if home['PTS'] and str(home['PTS']) != 'nan' else None,
+                'home_record': home['TEAM_WINS_LOSSES'],
+                'home_team_id': int(game['HOME_TEAM_ID']),
+            })
+    except Exception:
+        games = []
+
+    return render_template('scoreboard.html', games=games)
+
+
+@app.route('/standings')
+def standings():
+    try:
+        data = lg_standings.LeagueStandings()
+        df = data.get_data_frames()[0]
+        cols = ['TeamID', 'TeamCity', 'TeamName', 'WINS', 'LOSSES', 'WinPCT', 'HOME', 'ROAD', 'L10', 'strCurrentStreak']
+        east = df[df['Conference'] == 'East'][cols].to_dict('records')
+        west = df[df['Conference'] == 'West'][cols].to_dict('records')
+    except Exception:
+        east, west = [], []
+
+    return render_template('standings.html', east=east, west=west)
+
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -12,19 +12,51 @@
 
   <body class="bg-gray-900 text-white">
 
-    <div class="text-center mb-6">
+    <div class="text-center pt-4 mb-2">
       <a href="/">
-        <img src="/static/images/logo.png" alt="DribbleData" class="mx-auto h-32 mb-2 hover:opacity-80 transition duration-200" />
+        <img src="/static/images/logo.png" alt="DribbleData" class="mx-auto h-24 hover:opacity-80 transition duration-200" />
       </a>
     </div>
 
-    {% if request.endpoint != 'home_page' %}
-      <div class="absolute top-4 left-4">
-        <a href="javascript:history.back()" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white transition">
-          ← Back
-        </a>
+    <nav class="bg-gray-800 border-b border-gray-700 mb-6">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex space-x-6">
+          <a href="/scoreboard"
+             class="text-sm font-medium transition {{ 'text-white' if request.endpoint == 'scoreboard' else 'text-gray-400 hover:text-white' }}">
+            Scoreboard
+          </a>
+          <a href="/standings"
+             class="text-sm font-medium transition {{ 'text-white' if request.endpoint == 'standings' else 'text-gray-400 hover:text-white' }}">
+            Standings
+          </a>
+          {% if session.get('user') %}
+          <a href="/search"
+             class="text-sm font-medium transition {{ 'text-white' if request.endpoint == 'search_page' else 'text-gray-400 hover:text-white' }}">
+            Search
+          </a>
+          <a href="/compare"
+             class="text-sm font-medium transition {{ 'text-white' if request.endpoint == 'compare_players' else 'text-gray-400 hover:text-white' }}">
+            Compare
+          </a>
+          {% endif %}
+        </div>
+        <div class="flex items-center space-x-4">
+          {% if session.get('user') %}
+            <span class="text-gray-400 text-sm">{{ session.get('user') }}</span>
+            <a href="/logout" class="text-sm text-red-400 hover:text-red-300 transition">Logout</a>
+          {% else %}
+            <a href="/login" class="text-sm text-gray-400 hover:text-white transition">Login</a>
+            <a href="/signup"
+               class="text-sm text-white px-3 py-1 rounded transition"
+               style="background-color:#d57240"
+               onmouseover="this.style.backgroundColor='#b85423'"
+               onmouseout="this.style.backgroundColor='#d57240'">
+              Sign Up
+            </a>
+          {% endif %}
+        </div>
       </div>
-    {% endif %}
+    </nav>
 
     {% block content %}{% endblock %}
 
