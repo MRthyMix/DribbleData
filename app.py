@@ -1,9 +1,10 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, request, session, jsonify
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import commonplayerinfo, playercareerstats, playergamelog, scoreboardv2, leaguestandings as lg_standings
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
 from functools import wraps
 from dotenv import load_dotenv
 import os
@@ -12,16 +13,27 @@ from groq import Groq
 load_dotenv()
 
 app = Flask(__name__)
+
 database_url = os.getenv("DATABASE_URL")
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
+
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = os.getenv("SECRET_KEY")
-app.config['SECRET_KEY'] = os.getenv("SECRET_KEY")
-db = SQLAlchemy(app)
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
 
+CORS(app,
+     supports_credentials=True,
+     origins=[
+         'http://localhost:5173',
+         os.getenv('FRONTEND_URL', ''),
+     ])
+
+db = SQLAlchemy(app)
 ALL_PLAYERS = players.get_players()
+
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -33,307 +45,253 @@ class User(db.Model):
     coins = db.Column(db.Integer, default=1000, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-app.jinja_env.globals['enumerate'] = enumerate
 
 with app.app_context():
     db.create_all()
 
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if "user" not in session:
-            flash("Please log in first.", "warning")
-            return redirect(url_for("login"))
+        if 'user' not in session:
+            return jsonify({'error': 'Authentication required'}), 401
         return f(*args, **kwargs)
     return decorated_function
 
-@app.route("/")
-def home_page():
-    return render_template("home.html")
 
-@app.route("/signup", methods=["GET", "POST"])
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+@app.route('/api/signup', methods=['POST'])
 def signup():
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+    data = request.get_json()
+    username = data.get('username', '').strip()
+    email    = data.get('email', '').strip()
+    password = data.get('password', '')
 
-        email = request.form.get("email")
-        try:
-            if User.query.filter_by(username=username).first():
-                flash("Username already taken.", "danger")
-            elif User.query.filter_by(email=email).first():
-                flash("An account with that email already exists.", "danger")
-            else:
-                new_user = User(
-                    username=username,
-                    email=email,
-                    password=generate_password_hash(password)
-                )
-                db.session.add(new_user)
-                db.session.commit()
-                flash("Account created successfully! You can now log in.", "success")
-                return redirect(url_for("login"))
-        except Exception:
-            db.session.rollback()
-            flash("Something went wrong. Please try again.", "danger")
+    if not username or not email or not password:
+        return jsonify({'error': 'All fields are required.'}), 400
 
-    return render_template("signup.html")
+    try:
+        if User.query.filter_by(username=username).first():
+            return jsonify({'error': 'Username already taken.'}), 400
+        if User.query.filter_by(email=email).first():
+            return jsonify({'error': 'An account with that email already exists.'}), 400
+        new_user = User(username=username, email=email, password=generate_password_hash(password))
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({'message': 'Account created. You can now log in.'}), 201
+    except Exception:
+        db.session.rollback()
+        return jsonify({'error': 'Something went wrong. Please try again.'}), 500
 
-@app.route("/login", methods=["GET", "POST"])
+
+@app.route('/api/login', methods=['POST'])
 def login():
-    if request.method == "POST":
-        username = request.form.get("username")
-        password = request.form.get("password")
+    data = request.get_json()
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
 
-        try:
-            user = User.query.filter_by(username=username).first()
-            if user and check_password_hash(user.password, password):
-                session["user"] = username
-                flash("Logged in successfully!", "success")
-                return redirect(url_for("home_page"))
-            else:
-                flash("Invalid credentials", "danger")
-        except Exception:
-            flash("Something went wrong. Please try again.", "danger")
+    try:
+        user = User.query.filter_by(username=username).first()
+        if user and check_password_hash(user.password, password):
+            session['user'] = username
+            return jsonify({'user': username})
+        return jsonify({'error': 'Invalid credentials.'}), 401
+    except Exception:
+        return jsonify({'error': 'Something went wrong. Please try again.'}), 500
 
-    return render_template("login.html")
 
-@app.route("/logout")
+@app.route('/api/logout', methods=['POST'])
 def logout():
-    session.pop("user", None)
-    flash("You have been logged out.", "info")
-    return redirect(url_for("home_page"))
+    session.pop('user', None)
+    return jsonify({'message': 'Logged out.'})
 
-@app.route('/autocomplete', methods=['GET'])
+
+@app.route('/api/me')
+def me():
+    return jsonify({'user': session.get('user')})
+
+
+# ── Players ───────────────────────────────────────────────────────────────────
+
+@app.route('/api/autocomplete')
 @login_required
 def autocomplete():
     query = request.args.get('q', '').strip().lower()
     if not query:
         return jsonify([])
+    filtered = [p for p in ALL_PLAYERS if query in p['full_name'].lower()]
+    filtered.sort(key=lambda p: 0 if p['full_name'].lower().startswith(query) else 1)
+    return jsonify(filtered[:5])
 
-    filtered = [p for p in ALL_PLAYERS if query in p["full_name"].lower()]
 
-    def match_rank(player_name: str, q: str) -> int:
-        name_lower = player_name.lower()
-        if name_lower.startswith(q):
-            return 0
-        return 1
-
-    filtered.sort(key=lambda p: match_rank(p["full_name"], query))
-    filtered = filtered[:5]
-
-    return jsonify(filtered)
-
-@app.route("/search", methods=["GET", "POST"])
-@login_required
-def search_page():
-    if request.method == "POST":
-        player_name = request.form.get("player_name", "").strip()
-        if not player_name:
-            return render_template("search.html", error="Please enter a player name.")
-        return redirect(url_for("player_stats", name=player_name))
-
-    return render_template("search.html")
-
-@app.route("/player")
+@app.route('/api/player')
 @login_required
 def player_stats():
-    player_name = request.args.get("name", "").strip()
+    player_name = request.args.get('name', '').strip()
     if not player_name:
-        return redirect(url_for("home_page"))
+        return jsonify({'error': 'Player name required.'}), 400
 
     match = next((p for p in players.get_players()
-                if player_name.lower() in p["full_name"].lower()), None)
+                  if player_name.lower() in p['full_name'].lower()), None)
     if not match:
-        return render_template("index.html",
-                            error=f"No NBA player found matching '{player_name}'")
-    player_id = match["id"]
+        return jsonify({'error': f"No player found matching '{player_name}'"}), 404
 
-    # Fetch the last 5 regular season games
-    game_log = playergamelog.PlayerGameLog(
-        player_id=player_id,
-        season_type_all_star='Regular Season'
-    ).get_data_frames()[0]
-    last_5_games = game_log[['GAME_DATE', 'PTS', 'AST', 'REB', 'STL', 'BLK', 'FG3M']].dropna().head(5)
-
-    labels = last_5_games['GAME_DATE'].tolist()
-    points_per_game = last_5_games['PTS'].tolist()
-    assists_per_game = last_5_games['AST'].tolist()
-    rebounds_per_game = last_5_games['REB'].tolist()
-    steals_per_game = last_5_games['STL'].tolist()
-    blocks_per_game = last_5_games['BLK'].tolist()
-    three_pointers_made = last_5_games['FG3M'].tolist()
-
-    # Season averages
-    career_df = playercareerstats.PlayerCareerStats(
-        player_id=player_id, per_mode36='PerGame'
-    ).get_data_frames()[0]
-    season_avg = None
-    if not career_df.empty:
-        row = career_df.iloc[-1]
-        season_avg = {
-            'pts': round(row['PTS'], 1),
-            'reb': round(row['REB'], 1),
-            'ast': round(row['AST'], 1),
-            'stl': round(row['STL'], 1),
-            'blk': round(row['BLK'], 1),
-            'fg3m': round(row['FG3M'], 1),
-            'season': row['SEASON_ID'],
-        }
-
-
-    # Get player bio
-    info = commonplayerinfo.CommonPlayerInfo(player_id=player_id)
-    bio_df = info.get_data_frames()[0]          
-    birth_str = bio_df.loc[0, "BIRTHDATE"]        
-    birth_str = birth_str[:10]                    
+    player_id = match['id']
     try:
-        bdate = datetime.strptime(birth_str, "%Y-%m-%d").date()
-        today = datetime.today().date()
-        computed_age = today.year - bdate.year - (
-            (today.month, today.day) < (bdate.month, bdate.day)
-        )
-    except ValueError:
+        game_log = playergamelog.PlayerGameLog(
+            player_id=player_id, season_type_all_star='Regular Season'
+        ).get_data_frames()[0]
+        last_5 = game_log[['GAME_DATE', 'PTS', 'AST', 'REB', 'STL', 'BLK', 'FG3M']].dropna().head(5)
+        recent_games = last_5.to_dict('records')
+
+        career_df = playercareerstats.PlayerCareerStats(
+            player_id=player_id, per_mode36='PerGame'
+        ).get_data_frames()[0]
+        season_avg = None
+        if not career_df.empty:
+            row = career_df.iloc[-1]
+            season_avg = {
+                'pts':    round(float(row['PTS']), 1),
+                'reb':    round(float(row['REB']), 1),
+                'ast':    round(float(row['AST']), 1),
+                'stl':    round(float(row['STL']), 1),
+                'blk':    round(float(row['BLK']), 1),
+                'fg3m':   round(float(row['FG3M']), 1),
+                'season': row['SEASON_ID'],
+            }
+
+        info   = commonplayerinfo.CommonPlayerInfo(player_id=player_id)
+        bio_df = info.get_data_frames()[0]
+        birth_str = bio_df.loc[0, 'BIRTHDATE'][:10]
         computed_age = None
+        try:
+            bdate = datetime.strptime(birth_str, '%Y-%m-%d').date()
+            today = datetime.today().date()
+            computed_age = today.year - bdate.year - ((today.month, today.day) < (bdate.month, bdate.day))
+        except ValueError:
+            pass
 
-    team_id = bio_df.loc[0, "TEAM_ID"]
-    team_logo_url = f"https://cdn.nba.com/logos/nba/{team_id}/primary/L/logo.svg" \
-                    if team_id else "/static/images/fallback-team.png"
+        team_id = int(bio_df.loc[0, 'TEAM_ID'])
+        return jsonify({
+            'player': {
+                'id':       player_id,
+                'name':     bio_df.loc[0, 'DISPLAY_FIRST_LAST'],
+                'age':      computed_age,
+                'height':   bio_df.loc[0, 'HEIGHT'],
+                'weight':   bio_df.loc[0, 'WEIGHT'],
+                'exp':      bio_df.loc[0, 'SEASON_EXP'],
+                'team_id':  team_id,
+                'team_logo': f"https://cdn.nba.com/logos/nba/{team_id}/primary/L/logo.svg",
+                'headshot':  f"https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png",
+            },
+            'season_avg':   season_avg,
+            'recent_games': recent_games,
+        })
+    except Exception:
+        return jsonify({'error': 'Failed to load player data.'}), 500
 
-    return render_template(
-        "index.html",
-        error=None,
-        player_data=bio_df.iloc[0].tolist(),
-        computed_age=computed_age,
-        team_logo_url=team_logo_url,
-        season_avg=season_avg,
-        chart_labels=labels,
-        chart_points=points_per_game,
-        chart_rebounds=rebounds_per_game,
-        chart_assists=assists_per_game,
-        chart_steals=steals_per_game,
-        chart_blocks=blocks_per_game,
-        chart_3pt=three_pointers_made,
-    )
 
-@app.route('/compare', methods=['GET', 'POST'])
+@app.route('/api/compare')
 @login_required
-def compare_players():
-    if request.method == 'POST':
-        player1 = request.form.get('player1')
-        player2 = request.form.get('player2')
+def compare():
+    p1 = request.args.get('player1', '').strip()
+    p2 = request.args.get('player2', '').strip()
 
-        if not player1 or not player2:
-            flash("Please enter both player names.", "warning")
-            return render_template('compare_players.html')
-
-        return redirect(url_for('compare_results', player1=player1, player2=player2))
-
-    return render_template('compare_players.html')
-
-@app.route('/compare_results')
-@login_required
-def compare_results():
-    player1_name = request.args.get('player1', '').strip()
-    player2_name = request.args.get('player2', '').strip()
-
-    def get_last_5_games(name):
-        all_players = players.get_players()
-        match = next((p for p in all_players if name.lower() in p['full_name'].lower()), None)
+    def get_stats(name):
+        all_p = players.get_players()
+        match = next((p for p in all_p if name.lower() in p['full_name'].lower()), None)
         if not match:
             return None, None
-        pid = match['id']
-        game_log = playergamelog.PlayerGameLog(player_id=pid, season_type_all_star="Regular Season").get_data_frames()[0]
-        last_5 = game_log[['GAME_DATE', 'PTS', 'AST', 'REB']].head(5)
-        return match['full_name'], last_5
+        pid  = match['id']
+        logs = playergamelog.PlayerGameLog(
+            player_id=pid, season_type_all_star='Regular Season'
+        ).get_data_frames()[0]
+        last_5 = logs[['GAME_DATE', 'PTS', 'AST', 'REB']].head(5)
+        return match['full_name'], last_5.to_dict('records')
 
-    name1, stats1 = get_last_5_games(player1_name)
-    name2, stats2 = get_last_5_games(player2_name)
+    name1, stats1 = get_stats(p1)
+    name2, stats2 = get_stats(p2)
 
     if stats1 is None or stats2 is None:
-        flash("One or both players could not be found.", "danger")
-        return redirect(url_for("compare_players"))
+        return jsonify({'error': 'One or both players could not be found.'}), 404
 
-    return render_template('compare_player_results.html',
-                    name1=name1, stats1=stats1,
-                    name2=name2, stats2=stats2,
-                    stats1_json=stats1.to_dict(orient='records'),
-                    stats2_json=stats2.to_dict(orient='records'))
+    return jsonify({
+        'player1': {'name': name1, 'games': stats1},
+        'player2': {'name': name2, 'games': stats2},
+    })
 
+
+# ── Scoreboard ────────────────────────────────────────────────────────────────
+
+@app.route('/api/scoreboard')
+def scoreboard():
+    try:
+        board    = scoreboardv2.ScoreboardV2()
+        games_df = board.get_data_frames()[0]
+        lines_df = board.get_data_frames()[1]
+        games = []
+        for _, game in games_df.iterrows():
+            gid   = game['GAME_ID']
+            teams = lines_df[lines_df['GAME_ID'] == gid]
+            if len(teams) < 2:
+                continue
+            vis  = teams.iloc[0]
+            home = teams.iloc[1]
+
+            def pts(row):
+                v = row['PTS']
+                return int(v) if v and str(v) != 'nan' else None
+
+            games.append({
+                'status':  game['GAME_STATUS_TEXT'].strip(),
+                'visitor': {'name': f"{vis['TEAM_CITY_NAME']} {vis['TEAM_ABBREVIATION']}",
+                            'pts': pts(vis), 'record': vis['TEAM_WINS_LOSSES'],
+                            'team_id': int(game['VISITOR_TEAM_ID'])},
+                'home':    {'name': f"{home['TEAM_CITY_NAME']} {home['TEAM_ABBREVIATION']}",
+                            'pts': pts(home), 'record': home['TEAM_WINS_LOSSES'],
+                            'team_id': int(game['HOME_TEAM_ID'])},
+            })
+        return jsonify({'games': games})
+    except Exception:
+        return jsonify({'games': []})
+
+
+# ── Standings ─────────────────────────────────────────────────────────────────
+
+@app.route('/api/standings')
+def standings():
+    try:
+        df   = lg_standings.LeagueStandings().get_data_frames()[0]
+        cols = ['TeamID', 'TeamCity', 'TeamName', 'WINS', 'LOSSES',
+                'WinPCT', 'HOME', 'ROAD', 'L10', 'strCurrentStreak']
+        east = df[df['Conference'] == 'East'][cols].to_dict('records')
+        west = df[df['Conference'] == 'West'][cols].to_dict('records')
+        return jsonify({'east': east, 'west': west})
+    except Exception:
+        return jsonify({'east': [], 'west': []})
+
+
+# ── Chat ──────────────────────────────────────────────────────────────────────
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-@app.route('/chat', methods=['POST'])
+@app.route('/api/chat', methods=['POST'])
 @login_required
-def chatbot():
-    data = request.get_json()
-    messages = data.get("messages")
-
+def chat():
+    data     = request.get_json()
+    messages = data.get('messages')
     if not messages or not isinstance(messages, list):
-        return jsonify({'response': 'Invalid message format.'}), 400
-
+        return jsonify({'error': 'Invalid message format.'}), 400
     try:
         response = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model='llama-3.1-8b-instant',
             messages=messages
         )
-        reply = response.choices[0].message.content.strip()
-        return jsonify({'response': reply})
-    except Exception as e:
-        print(f"Groq API error: {e}")
-        return jsonify({'response': 'Sorry, something went wrong with the assistant.'}), 500
-
-
-@app.route('/chat_page')
-@login_required
-def chat_page():
-    return render_template("chat.html")
-
-@app.route('/scoreboard')
-def scoreboard():
-    try:
-        board = scoreboardv2.ScoreboardV2()
-        games_df = board.get_data_frames()[0]   # GameHeader
-        lines_df = board.get_data_frames()[1]   # LineScore
-
-        games = []
-        for _, game in games_df.iterrows():
-            game_id = game['GAME_ID']
-            teams = lines_df[lines_df['GAME_ID'] == game_id]
-            if len(teams) < 2:
-                continue
-            visitor = teams.iloc[0]
-            home = teams.iloc[1]
-            games.append({
-                'status': game['GAME_STATUS_TEXT'].strip(),
-                'visitor_name': f"{visitor['TEAM_CITY_NAME']} {visitor['TEAM_ABBREVIATION']}",
-                'visitor_pts': int(visitor['PTS']) if visitor['PTS'] and str(visitor['PTS']) != 'nan' else None,
-                'visitor_record': visitor['TEAM_WINS_LOSSES'],
-                'visitor_team_id': int(game['VISITOR_TEAM_ID']),
-                'home_name': f"{home['TEAM_CITY_NAME']} {home['TEAM_ABBREVIATION']}",
-                'home_pts': int(home['PTS']) if home['PTS'] and str(home['PTS']) != 'nan' else None,
-                'home_record': home['TEAM_WINS_LOSSES'],
-                'home_team_id': int(game['HOME_TEAM_ID']),
-            })
+        return jsonify({'response': response.choices[0].message.content.strip()})
     except Exception:
-        games = []
-
-    return render_template('scoreboard.html', games=games)
+        return jsonify({'error': 'Something went wrong with the assistant.'}), 500
 
 
-@app.route('/standings')
-def standings():
-    try:
-        data = lg_standings.LeagueStandings()
-        df = data.get_data_frames()[0]
-        cols = ['TeamID', 'TeamCity', 'TeamName', 'WINS', 'LOSSES', 'WinPCT', 'HOME', 'ROAD', 'L10', 'strCurrentStreak']
-        east = df[df['Conference'] == 'East'][cols].to_dict('records')
-        west = df[df['Conference'] == 'West'][cols].to_dict('records')
-    except Exception:
-        east, west = [], []
-
-    return render_template('standings.html', east=east, west=west)
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app.run(debug=True)

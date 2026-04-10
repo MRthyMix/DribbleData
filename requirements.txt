@@ -1,11 +1,11 @@
 flask
+flask-cors
 nba_api
 requests
 pandas
 sqlalchemy
 flask_sqlalchemy
 gunicorn
-matplotlib
 pytest
 groq
 python-dotenv
