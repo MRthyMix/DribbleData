@@ -6,3 +6,4 @@ instance/
 .env
 .idea
 CLAUDE.md
+.claude/
