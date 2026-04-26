@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function Login() {
-  const [username, setUsername] = useState('')
+  const [email, setEmail]      = useState('')
   const [password, setPassword] = useState('')
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
@@ -15,7 +15,7 @@ export default function Login() {
     setLoading(true)
     setError('')
     try {
-      await login(username, password)
+      await login(email, password)
       navigate('/')
     } catch (err) {
       setError(err.response?.data?.error || 'Something went wrong.')
@@ -27,15 +27,16 @@ export default function Login() {
   return (
     <div className="flex items-center justify-center" style={{ minHeight: 'calc(80vh - 8rem)' }}>
       <div className="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">
-        <h1 className="text-3xl font-bold mb-6 text-center">Login</h1>
+        <h1 className="text-3xl font-bold mb-2 text-center">Welcome Back</h1>
+        <p className="text-gray-400 text-center mb-6 text-sm">Log in to your DribbleData account</p>
 
         {error && <div className="mb-4 p-3 rounded text-sm text-white bg-red-600">{error}</div>}
 
         <form onSubmit={handleSubmit} className="flex flex-col space-y-4">
           <div className="flex flex-col space-y-1">
-            <label className="text-sm text-gray-300">Username</label>
-            <input type="text" value={username} onChange={e => setUsername(e.target.value)}
-                   placeholder="Your username"
+            <label className="text-sm text-gray-300">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                   placeholder="you@example.com"
                    className="px-3 py-2 bg-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
                    required />
           </div>
@@ -47,8 +48,11 @@ export default function Login() {
                    required />
           </div>
           <button type="submit" disabled={loading}
-                  className="mt-2 py-2 rounded font-semibold text-white bg-blue-600 hover:bg-blue-700 transition disabled:opacity-50">
-            {loading ? 'Logging in…' : 'Login'}
+                  className="mt-2 py-2 rounded font-semibold text-white transition disabled:opacity-50"
+                  style={{ backgroundColor: '#d57240' }}
+                  onMouseOver={e => { if (!loading) e.currentTarget.style.backgroundColor = '#b85423' }}
+                  onMouseOut={e => e.currentTarget.style.backgroundColor = '#d57240'}>
+            {loading ? 'Logging in…' : 'Log In'}
           </button>
         </form>
 

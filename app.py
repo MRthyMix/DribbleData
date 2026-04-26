@@ -85,14 +85,14 @@ def signup():
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
-    username = data.get('username', '').strip()
+    email    = data.get('email', '').strip()
     password = data.get('password', '')
 
     try:
-        user = User.query.filter_by(username=username).first()
+        user = User.query.filter_by(email=email).first()
         if user and check_password_hash(user.password, password):
-            session['user'] = username
-            return jsonify({'user': username})
+            session['user'] = user.username
+            return jsonify({'user': user.username})
         return jsonify({'error': 'Invalid credentials.'}), 401
     except Exception:
         return jsonify({'error': 'Something went wrong. Please try again.'}), 500

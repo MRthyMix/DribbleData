@@ -4,26 +4,47 @@
 
 {% block content %}
 <div class="flex items-center justify-center" style="min-height: calc(80vh - 8rem);">
-  <div class="bg-gray-800 p-8 rounded shadow-lg max-w-sm w-full">
-    <h1 class="text-3xl font-bold mb-6 text-center">Login</h1>
+  <div class="bg-gray-800 p-8 rounded-lg shadow-lg w-full max-w-md">
+    <h1 class="text-3xl font-bold mb-2 text-center">Welcome Back</h1>
+    <p class="text-gray-400 text-center mb-6 text-sm">Log in to your DribbleData account</p>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
-          {% if category == 'danger' or category == 'success' %}
-            <div class="mb-4 p-3 rounded text-white bg-{{ 'red-600' if category == 'danger' else 'green-600' }}">
-              {{ message }}
-            </div>
-          {% endif %}
+          <div class="mb-4 p-3 rounded text-white text-sm {{ 'bg-red-600' if category == 'danger' else 'bg-green-600' }}">
+            {{ message }}
+          </div>
         {% endfor %}
       {% endif %}
     {% endwith %}
 
     <form method="POST" class="flex flex-col space-y-4">
-      <input type="text" name="username" placeholder="Username" class="px-3 py-2 bg-gray-700 rounded" required>
-      <input type="password" name="password" placeholder="Password" class="px-3 py-2 bg-gray-700 rounded" required>
-      <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Login</button>
+
+      <div class="flex flex-col space-y-1">
+        <label class="text-sm text-gray-300">Email</label>
+        <input type="email" name="email" placeholder="you@example.com"
+               class="px-3 py-2 bg-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+      </div>
+
+      <div class="flex flex-col space-y-1">
+        <label class="text-sm text-gray-300">Password</label>
+        <input type="password" name="password" placeholder="Your password"
+               class="px-3 py-2 bg-gray-700 rounded focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+      </div>
+
+      <button type="submit"
+              class="mt-2 py-2 rounded font-semibold text-white transition"
+              style="background-color: #d57240;"
+              onmouseover="this.style.backgroundColor='#b85423'"
+              onmouseout="this.style.backgroundColor='#d57240'">
+        Log In
+      </button>
     </form>
+
+    <p class="mt-5 text-center text-sm text-gray-400">
+      Don't have an account?
+      <a href="{{ url_for('signup') }}" class="text-blue-400 hover:underline">Sign up</a>
+    </p>
   </div>
 </div>
 {% endblock %}
