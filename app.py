@@ -1,6 +1,5 @@
 from flask import Flask, request, session, jsonify, send_from_directory
 from nba_api.stats.static import players
-from nba_api.stats.endpoints import commonplayerinfo, playercareerstats, playergamelog
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 from flask_sqlalchemy import SQLAlchemy
@@ -9,29 +8,17 @@ from dotenv import load_dotenv
 import os
 import traceback
 import logging
+import requests
 from groq import Groq
 
 logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 
-# Headers required to avoid being blocked by NBA's API on cloud servers
-NBA_HEADERS = {
-    'Host': 'stats.nba.com',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'x-nba-stats-origin': 'stats',
-    'x-nba-stats-token': 'true',
-    'Connection': 'keep-alive',
-    'Referer': 'https://www.nba.com/',
-    'Origin': 'https://www.nba.com',
-}
 
 app = Flask(__name__)
 
-database_url = os.getenv("DATABASE_URL")
+database_url = os.getenv("DATABASE_URL", "sqlite:///users.db")
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
@@ -39,7 +26,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.secret_key = os.getenv("SECRET_KEY")
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SECURE'] = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
 
 db = SQLAlchemy(app)
 ALL_PLAYERS = players.get_players()
@@ -135,6 +122,81 @@ def autocomplete():
     return jsonify(filtered[:5])
 
 
+BDL_KEY     = os.getenv("BALLDONTLIE_API_KEY", "")
+BDL_HEADERS = {"Authorization": BDL_KEY} if BDL_KEY else {}
+CURRENT_SEASON = 2024   # BallDontLie uses the year the season starts
+
+
+def _bdl_find_player(name):
+    """Return the first BallDontLie player dict matching name, or None."""
+    resp = requests.get(
+        'https://api.balldontlie.io/v1/players',
+        headers=BDL_HEADERS,
+        params={'search': name, 'per_page': 5},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json().get('data', [])
+    if not data:
+        return None
+    name_lower = name.lower()
+    for p in data:
+        if name_lower in p['first_name'].lower() + ' ' + p['last_name'].lower():
+            return p
+    return data[0]
+
+
+def _bdl_season_avg(player_id):
+    resp = requests.get(
+        'https://api.balldontlie.io/v1/season_averages',
+        headers=BDL_HEADERS,
+        params={'season': CURRENT_SEASON, 'player_ids[]': player_id},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    data = resp.json().get('data', [])
+    if not data:
+        return None
+    s = data[0]
+    return {
+        'pts':    round(float(s.get('pts', 0) or 0), 1),
+        'reb':    round(float(s.get('reb', 0) or 0), 1),
+        'ast':    round(float(s.get('ast', 0) or 0), 1),
+        'stl':    round(float(s.get('stl', 0) or 0), 1),
+        'blk':    round(float(s.get('blk', 0) or 0), 1),
+        'fg3m':   round(float(s.get('fg3m', 0) or 0), 1),
+        'season': f"{CURRENT_SEASON}-{str(CURRENT_SEASON + 1)[-2:]}",
+    }
+
+
+def _bdl_recent_games(player_id, n=5):
+    resp = requests.get(
+        'https://api.balldontlie.io/v1/stats',
+        headers=BDL_HEADERS,
+        params={
+            'seasons[]':    CURRENT_SEASON,
+            'player_ids[]': player_id,
+            'per_page':     n,
+            'sort':         'date',
+            'direction':    'desc',
+        },
+        timeout=10,
+    )
+    resp.raise_for_status()
+    games = []
+    for g in resp.json().get('data', []):
+        games.append({
+            'GAME_DATE': g['game']['date'][:10],
+            'PTS':  g.get('pts') or 0,
+            'AST':  g.get('ast') or 0,
+            'REB':  g.get('reb') or 0,
+            'STL':  g.get('stl') or 0,
+            'BLK':  g.get('blk') or 0,
+            'FG3M': g.get('fg3m') or 0,
+        })
+    return games
+
+
 @app.route('/api/player')
 @login_required
 def player_stats():
@@ -142,67 +204,41 @@ def player_stats():
     if not player_name:
         return jsonify({'error': 'Player name required.'}), 400
 
-    match = next((p for p in players.get_players()
-                  if player_name.lower() in p['full_name'].lower()), None)
-    if not match:
-        return jsonify({'error': f"No player found matching '{player_name}'"}), 404
+    # Static lookup (local JSON, no network) — still valid for headshot URL
+    nba_match = next((p for p in ALL_PLAYERS if player_name.lower() in p['full_name'].lower()), None)
+    nba_id    = nba_match['id'] if nba_match else None
 
-    player_id = match['id']
-    logging.info(f"[player] found match: {match['full_name']} id={player_id}")
     try:
-        logging.info("[player] fetching game log...")
-        game_log = playergamelog.PlayerGameLog(
-            player_id=player_id, season_type_all_star='Regular Season',
-            timeout=8, headers=NBA_HEADERS
-        ).get_data_frames()[0]
-        logging.info(f"[player] game log rows: {len(game_log)}")
-        last_5 = game_log[['GAME_DATE', 'PTS', 'AST', 'REB', 'STL', 'BLK', 'FG3M']].dropna().head(5)
-        recent_games = last_5.to_dict('records')
+        bdl = _bdl_find_player(player_name)
+        if not bdl:
+            return jsonify({'error': f"No player found matching '{player_name}'"}), 404
 
-        logging.info("[player] fetching career stats...")
-        career_df = playercareerstats.PlayerCareerStats(
-            player_id=player_id, per_mode36='PerGame',
-            timeout=8, headers=NBA_HEADERS
-        ).get_data_frames()[0]
-        logging.info(f"[player] career df rows: {len(career_df)}")
-        season_avg = None
-        if not career_df.empty:
-            row = career_df.iloc[-1]
-            season_avg = {
-                'pts':    round(float(row['PTS']), 1),
-                'reb':    round(float(row['REB']), 1),
-                'ast':    round(float(row['AST']), 1),
-                'stl':    round(float(row['STL']), 1),
-                'blk':    round(float(row['BLK']), 1),
-                'fg3m':   round(float(row['FG3M']), 1),
-                'season': row['SEASON_ID'],
-            }
+        logging.info(f"[player] BDL match: {bdl['first_name']} {bdl['last_name']} id={bdl['id']}")
 
-        logging.info("[player] fetching player info...")
-        info   = commonplayerinfo.CommonPlayerInfo(player_id=player_id, timeout=8, headers=NBA_HEADERS)
-        bio_df = info.get_data_frames()[0]
-        logging.info("[player] bio fetched ok")
-        birth_str = bio_df.loc[0, 'BIRTHDATE'][:10]
-        computed_age = None
-        try:
-            bdate = datetime.strptime(birth_str, '%Y-%m-%d').date()
-            today = datetime.today().date()
-            computed_age = today.year - bdate.year - ((today.month, today.day) < (bdate.month, bdate.day))
-        except ValueError:
-            pass
+        season_avg   = _bdl_season_avg(bdl['id'])
+        recent_games = _bdl_recent_games(bdl['id'])
 
-        team_id = int(bio_df.loc[0, 'TEAM_ID'])
+        team      = bdl.get('team') or {}
+        team_id   = team.get('id')
+        full_name = f"{bdl['first_name']} {bdl['last_name']}"
+
+        # Best effort headshot from NBA CDN (uses NBA ID if we found one)
+        headshot = (
+            f"https://cdn.nba.com/headshots/nba/latest/1040x760/{nba_id}.png"
+            if nba_id else ''
+        )
+
         return jsonify({
             'player': {
-                'id':       player_id,
-                'name':     bio_df.loc[0, 'DISPLAY_FIRST_LAST'],
-                'age':      computed_age,
-                'height':   bio_df.loc[0, 'HEIGHT'],
-                'weight':   bio_df.loc[0, 'WEIGHT'],
-                'exp':      bio_df.loc[0, 'SEASON_EXP'],
-                'team_id':  team_id,
-                'team_logo': f"https://cdn.nba.com/logos/nba/{team_id}/primary/L/logo.svg",
-                'headshot':  f"https://cdn.nba.com/headshots/nba/latest/1040x760/{player_id}.png",
+                'id':        bdl['id'],
+                'name':      full_name,
+                'age':       bdl.get('age'),
+                'height':    bdl.get('height', ''),
+                'weight':    bdl.get('weight', ''),
+                'exp':       '',
+                'team_id':   team_id,
+                'team_logo': f"https://cdn.nba.com/logos/nba/{team_id}/primary/L/logo.svg" if team_id else '',
+                'headshot':  headshot,
             },
             'season_avg':   season_avg,
             'recent_games': recent_games,
@@ -220,17 +256,15 @@ def compare():
     p2 = request.args.get('player2', '').strip()
 
     def get_stats(name):
-        all_p = players.get_players()
-        match = next((p for p in all_p if name.lower() in p['full_name'].lower()), None)
-        if not match:
+        try:
+            bdl = _bdl_find_player(name)
+            if not bdl:
+                return None, None
+            full_name = f"{bdl['first_name']} {bdl['last_name']}"
+            games = _bdl_recent_games(bdl['id'])
+            return full_name, games
+        except Exception:
             return None, None
-        pid  = match['id']
-        logs = playergamelog.PlayerGameLog(
-            player_id=pid, season_type_all_star='Regular Season',
-            timeout=8, headers=NBA_HEADERS
-        ).get_data_frames()[0]
-        last_5 = logs[['GAME_DATE', 'PTS', 'AST', 'REB']].head(5)
-        return match['full_name'], last_5.to_dict('records')
 
     name1, stats1 = get_stats(p1)
     name2, stats2 = get_stats(p2)
