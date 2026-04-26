@@ -1,6 +1,6 @@
 # DribbleData
 
-**Live site:** [https://dribble-data.vercel.app/](https://dribble-data.vercel.app/)
+**Live site:** [https://dribbledata.online](https://dribbledata.online)
 
 DribbleData is a web application for NBA fans to look up player stats, compare players head-to-head, and chat with an AI basketball assistant. It pulls live data directly from the NBA API and presents it with interactive charts.
 
@@ -29,7 +29,9 @@ DribbleData is a web application for NBA fans to look up player stats, compare p
 | Auth | Werkzeug password hashing, Flask sessions |
 | Testing | pytest |
 | CI | GitHub Actions (Python 3.11) |
-| Hosting | Vercel |
+| Hosting | Raspberry Pi 5 (self-hosted) |
+| Server | Gunicorn + Nginx |
+| Tunnel | Cloudflare Tunnel (HTTPS, no port forwarding) |
 
 ---
 
@@ -154,3 +156,34 @@ The test suite covers:
 ## CI
 
 GitHub Actions runs `pytest` on every push using Python 3.11. See `.github/workflows/ci.yml`.
+
+---
+
+## Self-Hosting (Raspberry Pi)
+
+The app is self-hosted on a Raspberry Pi 5 and exposed publicly via Cloudflare Tunnel — no port forwarding required.
+
+**Stack:**
+- **Gunicorn** — WSGI server (2 workers, port 8000)
+- **Nginx** — reverse proxy, serves `/static/` directly
+- **Cloudflare Tunnel** — secure HTTPS tunnel from internet to Pi
+- **systemd** — keeps all services running and restarts them on boot/crash
+
+**Services (all enabled on boot):**
+```bash
+sudo systemctl status dribbledata   # Gunicorn
+sudo systemctl status nginx
+sudo systemctl status cloudflared
+```
+
+**Deploying updates:**
+```bash
+cd ~/DribbleData && git pull
+sudo systemctl restart dribbledata
+```
+
+**Logs:**
+```bash
+sudo journalctl -u dribbledata -f
+sudo tail -f /var/log/dribbledata/error.log
+```
