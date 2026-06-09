@@ -98,12 +98,7 @@ export default function Home() {
             {btn('COMPARE PLAYERS', () => navigate('/compare'), '#d57240', '#b85423')}
             {btn('LOGOUT',          logout,                     '#ce1d1d', '#b91c1c')}
           </>
-        ) : (
-          <>
-            {btn('SIGN UP', () => navigate('/signup'), '#17a34a', '#15803d')}
-            {btn('LOGIN',   () => navigate('/login'),  '#2563ea', '#1d4ed8')}
-          </>
-        )}
+        ) : null}
       </div>
     </div>
   )
