@@ -5,7 +5,7 @@ import {
   Chart as ChartJS, CategoryScale, LinearScale,
   BarElement, Title, Tooltip, Legend
 } from 'chart.js'
-import api from '../api'
+import api, { asset } from '../api'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend)
 
@@ -53,7 +53,7 @@ export default function Player() {
       {/* Header */}
       <img src={player.headshot} alt={player.name}
            className="w-40 h-40 object-cover rounded-full shadow-lg"
-           onError={e => { e.target.src = '/static/images/fallback.png' }} />
+           onError={e => { e.target.src = asset('images/basketball.png') }} />
       <h1 className="text-4xl font-bold mt-4">{player.name}</h1>
       <p className="mt-2 text-gray-300 text-sm">
         Age: {player.age ?? 'N/A'} · Height: {player.height} · Weight: {player.weight} · Exp: {player.exp} yrs

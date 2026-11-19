@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { asset } from '../api'
 
 export default function Navbar() {
   const { user, logout } = useAuth()
@@ -16,7 +17,7 @@ export default function Navbar() {
     <>
       <div className="text-center pt-4 mb-2">
         <Link to="/">
-          <img src="/static/images/logo.png" alt="DribbleData"
+          <img src={asset('images/logo.png')} alt="DribbleData"
                className="mx-auto h-24 hover:opacity-80 transition duration-200" />
         </Link>
       </div>

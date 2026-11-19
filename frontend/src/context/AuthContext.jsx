@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
-import api from '../api'
+import api, { setToken } from '../api'
 
 const AuthContext = createContext(null)
 
@@ -14,13 +14,15 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const res = await api.post('/api/login', { email, password })
+    setToken(res.data.token)
     setUser(res.data.user)
     return res.data
   }
 
   const logout = async () => {
-    await api.post('/api/logout')
+    setToken(null)
     setUser(null)
+    try { await api.post('/api/logout') } catch { /* token already discarded */ }
   }
 
   return (

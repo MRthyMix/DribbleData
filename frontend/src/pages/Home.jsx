@@ -2,20 +2,21 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Slider from 'react-slick'
+import { asset } from '../api'
 
 const PLAYERS = [
-  { name: 'LeBron James',          image: '/static/images/lebron.jpg' },
-  { name: 'Stephen Curry',         image: '/static/images/curry.jpg' },
-  { name: 'Kevin Durant',          image: '/static/images/durant.jpg' },
-  { name: 'Anthony Edwards',       image: '/static/images/edwards.jpg' },
-  { name: 'Giannis Antetokounmpo', image: '/static/images/giannis.jpg' },
-  { name: 'Victor Wembanyama',     image: '/static/images/wemby.jpg' },
-  { name: 'James Harden',          image: '/static/images/harden.jpg' },
-  { name: 'Ja Morant',             image: '/static/images/jamorant.jpg' },
-  { name: 'Kyrie Irving',          image: '/static/images/kyrie.jpg' },
-  { name: 'Devin Booker',          image: '/static/images/booker.jpg' },
-  { name: 'Klay Thompson',         image: '/static/images/klay.jpg' },
-  { name: 'Paul George',           image: '/static/images/paul.jpg' },
+  { name: 'LeBron James',          image: asset('images/lebron.jpg') },
+  { name: 'Stephen Curry',         image: asset('images/curry.jpg') },
+  { name: 'Kevin Durant',          image: asset('images/durant.jpg') },
+  { name: 'Anthony Edwards',       image: asset('images/edwards.jpg') },
+  { name: 'Giannis Antetokounmpo', image: asset('images/giannis.jpg') },
+  { name: 'Victor Wembanyama',     image: asset('images/wemby.jpg') },
+  { name: 'James Harden',          image: asset('images/harden.jpg') },
+  { name: 'Ja Morant',             image: asset('images/jamorant.jpg') },
+  { name: 'Kyrie Irving',          image: asset('images/kyrie.jpg') },
+  { name: 'Devin Booker',          image: asset('images/booker.jpg') },
+  { name: 'Klay Thompson',         image: asset('images/klay.jpg') },
+  { name: 'Paul George',           image: asset('images/paul.jpg') },
 ]
 
 const SLIDER_SETTINGS = {

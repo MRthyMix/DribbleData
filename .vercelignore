@@ -1,0 +1,10 @@
+# Vercel only runs the Flask API (app.py); the frontend is deployed to GitHub Pages.
+frontend
+static
+templates
+tests
+.github
+.venv
+.venv-1
+instance
+*.db

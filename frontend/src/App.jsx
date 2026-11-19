@@ -14,7 +14,7 @@ import Compare from './pages/Compare'
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <div className="min-h-screen bg-gray-900 text-white">
           <Navbar />
           <Routes>

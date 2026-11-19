@@ -1,4 +1,5 @@
 from flask import Flask, request, session, jsonify, send_from_directory
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from nba_api.stats.static import players
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -31,6 +32,55 @@ app.config['SESSION_COOKIE_SECURE'] = os.getenv("SESSION_COOKIE_SECURE", "false"
 db = SQLAlchemy(app)
 ALL_PLAYERS = players.get_players()
 
+# ── CORS (frontend is served from GitHub Pages, API from Vercel) ─────────────
+# Comma-separated list of origins allowed to call the API.
+ALLOWED_ORIGINS = {
+    o.strip().rstrip('/')
+    for o in os.getenv(
+        "ALLOWED_ORIGINS",
+        "https://mrthymix.github.io,http://localhost:5173",
+    ).split(',')
+    if o.strip()
+}
+
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get('Origin')
+    if origin and origin.rstrip('/') in ALLOWED_ORIGINS:
+        response.headers['Access-Control-Allow-Origin'] = origin
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+        response.headers['Access-Control-Max-Age'] = '600'
+        response.headers.add('Vary', 'Origin')
+    return response
+
+
+# ── Auth tokens ──────────────────────────────────────────────────────────────
+# Cross-site cookies (github.io → vercel.app) are blocked by most browsers, so
+# the React app authenticates with a signed bearer token instead of a session.
+TOKEN_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+
+def _token_serializer():
+    return URLSafeTimedSerializer(app.secret_key, salt='auth-token')
+
+
+def make_token(username):
+    return _token_serializer().dumps({'user': username})
+
+
+def current_user():
+    """Username from a valid bearer token, falling back to the Flask session."""
+    auth = request.headers.get('Authorization', '')
+    if auth.startswith('Bearer '):
+        try:
+            data = _token_serializer().loads(auth[7:], max_age=TOKEN_MAX_AGE)
+            return data.get('user')
+        except (BadSignature, SignatureExpired):
+            return None
+    return session.get('user')
+
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -50,7 +100,7 @@ with app.app_context():
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if 'user' not in session:
+        if not current_user():
             return jsonify({'error': 'Authentication required'}), 401
         return f(*args, **kwargs)
     return decorated_function
@@ -92,7 +142,7 @@ def login():
         user = User.query.filter_by(email=email).first()
         if user and check_password_hash(user.password, password):
             session['user'] = user.username
-            return jsonify({'user': user.username})
+            return jsonify({'user': user.username, 'token': make_token(user.username)})
         return jsonify({'error': 'Invalid credentials.'}), 401
     except Exception:
         return jsonify({'error': 'Something went wrong. Please try again.'}), 500
@@ -106,7 +156,7 @@ def logout():
 
 @app.route('/api/me')
 def me():
-    return jsonify({'user': session.get('user')})
+    return jsonify({'user': current_user()})
 
 
 # ── Players ───────────────────────────────────────────────────────────────────
@@ -382,7 +432,13 @@ def chat():
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_react(path):
+    # Local convenience only: in production the frontend is on GitHub Pages and
+    # this API (on Vercel) has no built frontend to serve.
+    if path.startswith('api/'):
+        return jsonify({'error': 'Not found.'}), 404
     dist = os.path.join(app.root_path, 'static', 'dist')
+    if not os.path.exists(os.path.join(dist, 'index.html')):
+        return jsonify({'status': 'ok', 'service': 'DribbleData API'})
     if path and os.path.exists(os.path.join(dist, path)):
         return send_from_directory(dist, path)
     return send_from_directory(dist, 'index.html')

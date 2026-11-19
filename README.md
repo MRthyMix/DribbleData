@@ -1,6 +1,6 @@
 # DribbleData
 
-**Live site:** [https://dribbledata.online](https://dribbledata.online)
+**Live site:** [https://mrthymix.github.io/DribbleData](https://mrthymix.github.io/DribbleData)
 
 DribbleData is a web application for NBA fans to look up player stats, compare players head-to-head, and chat with an AI basketball assistant. It pulls live data directly from the NBA API and presents it with interactive charts.
 
@@ -29,9 +29,8 @@ DribbleData is a web application for NBA fans to look up player stats, compare p
 | Auth | Werkzeug password hashing, Flask sessions |
 | Testing | pytest |
 | CI | GitHub Actions (Python 3.11) |
-| Hosting | Raspberry Pi 5 (self-hosted) |
-| Server | Gunicorn + Nginx |
-| Tunnel | Cloudflare Tunnel (HTTPS, no port forwarding) |
+| Frontend hosting | GitHub Pages (React build, deployed by GitHub Actions) |
+| API hosting | Vercel (serverless Flask) |
 
 ---
 
@@ -159,31 +158,30 @@ GitHub Actions runs `pytest` on every push using Python 3.11. See `.github/workf
 
 ---
 
-## Self-Hosting (Raspberry Pi)
+## Deployment
 
-The app is self-hosted on a Raspberry Pi 5 and exposed publicly via Cloudflare Tunnel — no port forwarding required.
+The React frontend and the Flask API are deployed separately:
 
-**Stack:**
-- **Gunicorn** — WSGI server (2 workers, port 8000)
-- **Nginx** — reverse proxy, serves `/static/` directly
-- **Cloudflare Tunnel** — secure HTTPS tunnel from internet to Pi
-- **systemd** — keeps all services running and restarts them on boot/crash
+| Part | Host | Deploys when |
+|------|------|--------------|
+| Frontend (`frontend/`) | GitHub Pages | A push to `main` changes `frontend/` (`.github/workflows/pages.yml`) |
+| API (`app.py`) | Vercel | Any push to `main`, via the Vercel GitHub integration (`vercel.json`, `.vercelignore`) |
 
-**Services (all enabled on boot):**
-```bash
-sudo systemctl status dribbledata   # Gunicorn
-sudo systemctl status nginx
-sudo systemctl status cloudflared
-```
+The frontend logs in with a signed bearer token stored in `localStorage`, because browsers block cookies sent between `github.io` and `vercel.app`.
 
-**Deploying updates:**
-```bash
-cd ~/DribbleData && git pull
-sudo systemctl restart dribbledata
-```
+### One-time setup
 
-**Logs:**
-```bash
-sudo journalctl -u dribbledata -f
-sudo tail -f /var/log/dribbledata/error.log
-```
+**Vercel (API)**
+1. Import the GitHub repo at [vercel.com/new](https://vercel.com/new). Leave the framework preset as "Other"; `vercel.json` handles the build.
+2. Under Project → Settings → Environment Variables, add:
+   - `DATABASE_URL`: the Neon Postgres connection string (required; Vercel's filesystem is read-only, so the SQLite fallback won't work)
+   - `SECRET_KEY`: a long random string (signs login tokens)
+   - `GROQ_API_KEY`
+   - `BALLDONTLIE_API_KEY`
+   - `ALLOWED_ORIGINS` (optional): comma-separated origins allowed to call the API. Defaults to `https://mrthymix.github.io,http://localhost:5173`.
+3. Deploy, and note the production URL (e.g. `https://dribbledata.vercel.app`).
+
+**GitHub Pages (frontend)**
+1. Repo → Settings → Pages → Build and deployment → Source: **GitHub Actions**.
+2. Repo → Settings → Secrets and variables → Actions → **Variables** → add `VITE_API_URL` = the Vercel URL from above, with no trailing slash.
+3. Run the "Deploy frontend to GitHub Pages" workflow from the Actions tab, or push a change under `frontend/`.
